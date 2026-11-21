@@ -1,0 +1,14 @@
+{
+  "name": "nightfall-escape",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Original multiplayer 3D survival chase prototype",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}
