@@ -1,1 +1,128 @@
-
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>NIGHTFALL — Escape</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080b12;color:#fff;font-family:Arial,sans-serif;touch-action:none}canvas{display:block}
+#hud{position:fixed;z-index:5;top:12px;left:12px;background:#080b12cc;border:1px solid #db304c;border-radius:10px;padding:9px 12px;font-size:12px;min-width:145px}
+#hud b{color:#ff536c;letter-spacing:2px}#hpbar{height:6px;background:#38313a;border-radius:8px;margin-top:6px;overflow:hidden}#hp{height:100%;width:100%;background:#49d98a;transition:width .2s}
+#status{color:#9eabbc;margin-top:5px;font-size:11px}#room{position:fixed;z-index:5;top:12px;right:12px;background:#080b12cc;border:1px solid #4b596e;border-radius:9px;padding:8px 10px;font-size:11px}
+#lobby{position:fixed;z-index:10;inset:0;background:linear-gradient(#060910eF,#0b1424ee),radial-gradient(circle at 50% 35%,#45202b,#080b12);display:flex;align-items:center;justify-content:center;padding:18px}
+.panel{width:min(440px,100%);background:#101725;border:1px solid #a52d45;border-radius:18px;padding:22px;box-shadow:0 18px 70px #000a}
+h1{margin:0 0 5px;color:#ff526d;letter-spacing:4px;font-size:27px}.sub{color:#aab5c5;font-size:13px;line-height:1.5;margin-bottom:18px}
+input{width:100%;padding:13px;margin:5px 0;background:#080e18;border:1px solid #38475b;border-radius:9px;color:white;font-size:15px}
+button{border:1px solid #ff657a;background:#b9213e;color:#fff;padding:12px 15px;border-radius:10px;font-weight:800;cursor:pointer}
+#start{width:100%;margin-top:10px;font-size:15px}#hint{font-size:11px;color:#8d9caf;margin-top:12px;line-height:1.5}
+#mobile{position:fixed;inset:0;z-index:4;pointer-events:none}
+#stickArea{position:absolute;left:0;bottom:0;width:52%;height:48%;pointer-events:auto}
+#base{position:absolute;width:112px;height:112px;border:2px solid #ffffff55;background:#10182788;border-radius:50%;display:none;transform:translate(-50%,-50%)}
+#knob{position:absolute;width:46px;height:46px;border-radius:50%;background:#e53655dd;border:2px solid white;left:50%;top:50%;transform:translate(-50%,-50%)}
+#look{position:absolute;right:0;top:0;width:55%;height:75%;pointer-events:auto}
+#actions{position:absolute;right:14px;bottom:20px;display:flex;flex-direction:column;gap:9px;pointer-events:auto}
+#actions button{width:70px;height:54px;padding:4px;background:#141b29dd;font-size:11px}
+#interact{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);pointer-events:auto;display:none}
+#toast{position:fixed;z-index:8;top:70px;left:50%;transform:translateX(-50%);background:#101725dd;border:1px solid #db304c;padding:9px 14px;border-radius:9px;font-size:12px;display:none;white-space:nowrap}
+#cross{position:fixed;z-index:3;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#fff8;transform:translate(-50%,-50%);pointer-events:none}
+@media(pointer:fine){#mobile{display:none}}
+</style>
+</head>
+<body>
+<div id="hud"><b>NIGHTFALL / ESCAPE</b><div id="hpbar"><div id="hp"></div></div><div id="status">Conectando...</div></div>
+<div id="room">SALA: <span id="roomName">---</span></div><div id="toast"></div><div id="cross"></div>
+<div id="lobby"><div class="panel">
+<h1>NIGHTFALL</h1><div class="sub">ESCAPE — sobreviva à perseguição. Fique junto do seu time, procure rotas e não deixe os perseguidores alcançarem você.</div>
+<input id="playerName" maxlength="16" placeholder="Seu apelido" value="Runner">
+<input id="roomCode" maxlength="12" placeholder="Código da sala (ex.: AMIGOS)" value="PUBLIC">
+<button id="start">ENTRAR NA PARTIDA</button>
+<div id="hint">Para jogar com seu amigo, os dois devem abrir o mesmo endereço do jogo e usar o mesmo código de sala. Protótipo online: o servidor precisa estar hospedado para conexões fora da sua rede.</div>
+</div></div>
+<div id="mobile"><div id="look"></div><div id="stickArea"><div id="base"><div id="knob"></div></div></div><div id="actions"><button id="run">CORRER</button><button id="jump">PULAR</button><button id="slide">DESLIZAR</button><button id="revive">REVIVER</button></div><button id="interact">REVIVER JOGADOR</button></div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x101927);scene.fog=new THREE.Fog(0x101927,25,115);
+const camera=new THREE.PerspectiveCamera(76,innerWidth/innerHeight,.1,250);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.shadowMap.enabled=true;document.body.appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0x9bb8d8,0x222633,1.35));
+const moon=new THREE.DirectionalLight(0xb6d5ff,1.25);moon.position.set(-20,35,15);moon.castShadow=true;scene.add(moon);
+const point=new THREE.PointLight(0xff314f,25,30);point.position.set(0,5,-14);scene.add(point);
+const mat=(c,r=.85,m=0)=>new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:m});
+const concrete=mat(0x333b48), asphalt=mat(0x202631), dark=mat(0x111722), windowMat=new THREE.MeshStandardMaterial({color:0x344b60,emissive:0x172f4a,emissiveIntensity:.7}), neon=mat(0xd92b4b,.3,.3);
+function box(w,h,d,x,y,z,material,shadow=true){const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);o.position.set(x,y,z);o.castShadow=shadow;o.receiveShadow=true;scene.add(o);return o}
+const floor=box(180,.5,220,0,-.35,-75,asphalt);
+for(let i=-5;i<=5;i++){box(.16,.02,210,i*5,.01,-75,mat(i===0?0xd33b53:0x66717f),false)}
+// Urban grid, buildings and alleys
+for(let side of [-1,1])for(let i=0;i<9;i++){
+ const z=8-i*22, x=side*(18+(i%3)*5), w=10+(i%2)*4,h=10+(i%4)*4,d=13;
+ box(w,h,d,x,h/2-.1,z,concrete);
+ for(let fy=1;fy<h-1;fy+=3)for(let fx=-w/2+1;fx<w/2-1;fx+=3)box(1.25,1.4,.08,x+fx,fy,z+d/2+.05,windowMat,false);
+ box(w+.3,.35,d+.3,x,h+.1,z,mat(0x171e29));
+}
+// street lamps
+for(let z=5;z>-180;z-=18)for(let s of [-1,1]){box(.22,5,.22,s*9,2.5,z,mat(0x303a49));let lamp=new THREE.PointLight(0xffd9a0,8,16);lamp.position.set(s*9,5,z);scene.add(lamp);box(.8,.15,.8,s*9,5,z,mat(0xffd99c),false)}
+// cars and cover props
+for(let i=0;i<12;i++){let x=(i%2?1:-1)*(5+Math.random()*4),z=-Math.random()*170;box(2.3,.8,4,x,.55,z,mat(i%2?0x344d67:0x6d2638));box(1.9,.45,1.7,x,1.05,z,mat(0x1a2735))}
+for(let i=0;i<18;i++){let x=(Math.random()-.5)*28,z=-Math.random()*180;box(1.1,1.4,1.1,x,.7,z,mat(0x52605e));box(1.2,.12,1.2,x,1.45,z,mat(0x9a7445))}
+const playerMat=mat(0x202b3b), skin=mat(0xc78d69), red=mat(0xe53554);
+function makeAvatar(color=0x55c8ff){
+ const g=new THREE.Group(), bodymat=mat(color), headmat=skin;
+ const limb=(w,h,d,m,x,y,z)=>{const a=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);a.position.set(x,y,z);a.castShadow=true;g.add(a);return a};
+ limb(.85,1.1,.45,bodymat,0,1.65,0);limb(.7,.7,.7,headmat,0,2.58,0);
+ const arms=[],legs=[];
+ for(const s of [-1,1]){let a=limb(.3,.95,.34,bodymat,s*.58,1.72,0);arms.push(a);let l=limb(.34,.95,.38,mat(0x171d2a),s*.23,.55,0);legs.push(l)}
+ g.userData={arms,legs};return g;
+}
+const me=makeAvatar(0x29a6c9);scene.add(me);me.position.set(0,0,5);
+const remote=new Map();
+function addRemote(p){if(remote.has(p.id))return;const g=makeAvatar(0xe0a64b);scene.add(g);const label=document.createElement('div');label.style.cssText='position:fixed;z-index:2;color:white;font-size:11px;text-shadow:0 1px 4px #000;pointer-events:none';document.body.appendChild(label);remote.set(p.id,{g,label,data:p})}
+function removeRemote(id){const r=remote.get(id);if(r){scene.remove(r.g);r.label.remove();remote.delete(id)}}
+const chaser=new THREE.Group();scene.add(chaser);
+const chaserMat=mat(0x090a0e,.5), chaserGlow=new THREE.MeshStandardMaterial({color:0xff123f,emissive:0xff123f,emissiveIntensity:3});
+function enemyPart(w,h,d,m,x,y,z){let o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);chaser.add(o);return o}
+enemyPart(1.25,2.4,.65,chaserMat,0,1.35,0);enemyPart(1.05,.9,.7,chaserMat,0,3,0);
+enemyPart(.18,.16,.08,chaserGlow,-.25,3.05,.37);enemyPart(.18,.16,.08,chaserGlow,.25,3.05,.37);
+for(let s of [-1,1]){enemyPart(.35,1.3,.35,chaserMat,s*.85,1.5,0);enemyPart(.4,1.2,.4,chaserMat,s*.35,.3,0)}
+chaser.position.set(0,0,-55);
+let socket=null,myId=null,room='PUBLIC',connected=false,hp=100,down=false;
+function toast(t){const el=document.querySelector('#toast');el.textContent=t;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',2500)}
+function connect(){const proto=location.protocol==='https:'?'wss':'ws';socket=new WebSocket(`${proto}://${location.host}`);socket.onopen=()=>{connected=true;socket.send(JSON.stringify({type:'joinRoom',room,name:document.querySelector('#playerName').value||'Runner'}));document.querySelector('#status').textContent='ONLINE • conectando à sala'};socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='welcome'){myId=m.id}else if(m.type==='roomJoined'){room=m.room;document.querySelector('#roomName').textContent=room;m.players.forEach(addRemote);document.querySelector('#lobby').style.display='none';toast('Você entrou na partida!')}else if(m.type==='join'){addRemote(m.player);toast(m.player.name+' entrou na sala')}else if(m.type==='leave'){removeRemote(m.id)}else if(m.type==='state'){const r=remote.get(m.player.id);if(r)r.data=m.player;else if(m.player.id!==myId)addRemote(m.player)}else if(m.type==='revived'&&myId){hp=m.hp;down=false;toast('Você foi revivido!')}};socket.onclose=()=>{connected=false;document.querySelector('#status').textContent='DESCONECTADO • tentando reconectar';setTimeout(()=>{if(!connected)connect()},2500)}}
+document.querySelector('#start').onclick=()=>{if(location.protocol==='file:'){toast('Hospede o servidor para jogar online.');return}connect()};
+let keys={},yaw=0,pitch=0,moveX=0,moveY=0,running=false,sliding=0,vy=0,onGround=true,stamina=100,elapsed=0;
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'&&onGround&&!down){vy=8;onGround=false}if(e.code==='ShiftLeft')running=true;if(e.code==='ControlLeft')sliding=.7});
+addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='ShiftLeft')running=false});
+let lock=false;renderer.domElement.addEventListener('click',()=>{if(matchMedia('(pointer:fine)').matches&&!lock)renderer.domElement.requestPointerLock?.()});
+addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer.domElement){yaw-=e.movementX*.0025;pitch=THREE.MathUtils.clamp(pitch-e.movementY*.002,-.8,.8)}});
+const stick=document.querySelector('#stickArea'),base=document.querySelector('#base'),knob=document.querySelector('#knob');let stickId=null,origin={x:0,y:0};
+stick.addEventListener('pointerdown',e=>{stickId=e.pointerId;stick.setPointerCapture(stickId);origin={x:e.clientX,y:e.clientY};base.style.display='block';base.style.left=e.clientX+'px';base.style.top=e.clientY+'px';stickMove(e)});
+stick.addEventListener('pointermove',e=>{if(e.pointerId===stickId)stickMove(e)});
+function stickMove(e){let dx=e.clientX-origin.x,dy=e.clientY-origin.y,l=Math.hypot(dx,dy),max=42;if(l>max){dx*=max/l;dy*=max/l}moveX=dx/max;moveY=-dy/max;knob.style.left=`calc(50% + ${dx}px)`;knob.style.top=`calc(50% + ${dy}px)`}
+function stickEnd(e){if(e.pointerId!==stickId)return;stickId=null;moveX=moveY=0;base.style.display='none';knob.style.left='50%';knob.style.top='50%'}
+stick.addEventListener('pointerup',stickEnd);stick.addEventListener('pointercancel',stickEnd);
+const look=document.querySelector('#look');let lookId=null,last={x:0,y:0};look.addEventListener('pointerdown',e=>{lookId=e.pointerId;look.setPointerCapture(lookId);last={x:e.clientX,y:e.clientY}});look.addEventListener('pointermove',e=>{if(e.pointerId!==lookId)return;yaw-=(e.clientX-last.x)*.005;pitch=THREE.MathUtils.clamp(pitch+(e.clientY-last.y)*.004,-.7,.6);last={x:e.clientX,y:e.clientY}});look.addEventListener('pointerup',()=>lookId=null);
+document.querySelector('#run').onpointerdown=()=>running=true;document.querySelector('#run').onpointerup=()=>running=false;
+document.querySelector('#jump').onclick=()=>{if(onGround&&!down){vy=8;onGround=false}};
+document.querySelector('#slide').onclick=()=>{if(!down)sliding=.8};
+document.querySelector('#revive').onclick=()=>{let nearest=null,best=3;for(const [id,r] of remote){let d=me.position.distanceTo(r.g.position);if(r.data.down&&d<best){best=d;nearest=id}}if(nearest&&socket?.readyState===1)socket.send(JSON.stringify({type:'revive',id:nearest}));else toast('Chegue perto de um aliado caído')};
+let last=performance.now(),sendTimer=0;
+function animate(now){requestAnimationFrame(animate);let dt=Math.min((now-last)/1000,.04);last=now;elapsed+=dt;
+let f=moveY+(keys.KeyW?1:0)-(keys.KeyS?1:0),s=moveX+(keys.KeyD?1:0)-(keys.KeyA?1:0);let moving=Math.abs(f)+Math.abs(s)>.08;
+if(running&&stamina>0&&moving){stamina=Math.max(0,stamina-25*dt)}else stamina=Math.min(100,stamina+13*dt);
+let speed=down?0:(sliding>0?10:(running&&stamina>0?8.5:5.2));sliding=Math.max(0,sliding-dt);
+const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw)),right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+let v=forward.multiplyScalar(f).add(right.multiplyScalar(s));if(v.length()>1)v.normalize();
+me.position.addScaledVector(v,speed*dt);me.position.x=THREE.MathUtils.clamp(me.position.x,-13,13);me.position.z=THREE.MathUtils.clamp(me.position.z,-185,12);
+vy-=20*dt;me.position.y+=vy*dt;if(me.position.y<=0){me.position.y=0;vy=0;onGround=true}
+me.rotation.y=yaw;me.userData.legs[0].rotation.x=moving?Math.sin(elapsed*speed)*.65:0;me.userData.legs[1].rotation.x=-me.userData.legs[0].rotation.x;me.userData.arms[0].rotation.x=-me.userData.legs[0].rotation.x*.7;me.userData.arms[1].rotation.x=-me.userData.arms[0].rotation.x;
+if(sliding>0){me.scale.y=.65}else me.scale.y=1;
+const target=me.position.clone().add(new THREE.Vector3(0,1.55,0));camera.position.copy(target).add(new THREE.Vector3(Math.sin(yaw)*.15,0,Math.cos(yaw)*.15));camera.rotation.order='YXZ';camera.rotation.set(pitch,yaw,0);
+// Simple pursuing bot with red glow; keep it in same world for everyone in this prototype
+const chaseTarget=me.position.clone();for(const r of remote.values())if(r.data&&!r.data.down&&r.g.position.distanceTo(chaser.position)<chaseTarget.distanceTo(chaser.position))chaseTarget.copy(r.g.position);
+let chaseDir=chaseTarget.clone().sub(chaser.position);chaseDir.y=0;if(chaseDir.length()>1){chaseDir.normalize();chaser.position.addScaledVector(chaseDir,2.7*dt);chaser.rotation.y=Math.atan2(chaseDir.x,chaseDir.z)}
+if(chaser.position.distanceTo(me.position)<1.5&&!down){hp=Math.max(0,hp-35*dt);if(hp<=0){down=true;toast('Você caiu! Um amigo pode te reviver.')}}else if(!down)hp=Math.min(100,hp+2*dt);
+for(const r of remote.values()){const p=r.data;r.g.position.lerp(new THREE.Vector3(p.x,p.y,p.z),.25);r.g.rotation.y=p.yaw;r.g.userData.legs[0].rotation.x=Math.sin(elapsed*8)*.25;r.label.textContent=p.name+(p.down?' • CAÍDO':'');let q=r.g.position.clone().add(new THREE.Vector3(0,3,0)).project(camera);r.label.style.left=((q.x*.5+.5)*innerWidth)+'px';r.label.style.top=((-q.y*.5+.5)*innerHeight)+'px';r.label.style.display=q.z<1?'block':'none'}
+document.querySelector('#hp').style.width=hp+'%';document.querySelector('#hp').style.background=hp<35?'#e63b55':'#49d98a';document.querySelector('#status').textContent=(connected?'ONLINE':'OFFLINE')+' • '+(down?'CAÍDO':'STAMINA '+Math.round(stamina)+'%');
+sendTimer+=dt;if(sendTimer>.08&&socket?.readyState===1){sendTimer=0;socket.send(JSON.stringify({type:'state',x:me.position.x,y:me.position.y,z:me.position.z,yaw,hp,down}))}
+renderer.render(scene,camera)}
+requestAnimationFrame(animate);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script></body></html>
